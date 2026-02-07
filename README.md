@@ -20,46 +20,25 @@ MCP server for fetching and comparing Confluence documentation with local files.
 
 ### 1. Set Environment Variables
 
-Get your scoped API token from: https://support.atlassian.com/confluence/kb/scoped-api-tokens-in-confluence-cloud/
+Add these to your shell profile (`~/.zshrc`, `~/.bashrc`, etc.):
 
 ```bash
 export CONFLUENCE_TOKEN="your_scoped_token_here"
+export CONFLUENCE_EMAIL="your.email@company.com"
 export CONFLUENCE_CLOUD_ID="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 ```
 
-Or copy `.env.example` to `.env` and fill in your values.
+Then reload your shell (`source ~/.zshrc`) or open a new terminal.
 
-### 2. Install Dependencies & Build
+Get your scoped API token from: https://support.atlassian.com/confluence/kb/scoped-api-tokens-in-confluence-cloud/
 
-```bash
-npm install
-npm run build
-```
+### 2. Configure MCP
 
-### 3. Configure MCP
-
-Add to your MCP settings configuration file (e.g., `mcp.json` or similar):
+Add to your MCP settings (`mcp.json`). No `env` block needed — credentials come from `.env`:
 
 ```json
 {
   "mcpServers": {
-    "confluence-reader": {
-      "command": "npx",
-      "args": ["@satiyap/confluence-reader-mcp"],
-      "env": {
-        "CONFLUENCE_TOKEN": "${env:CONFLUENCE_TOKEN}",
-        "CONFLUENCE_CLOUD_ID": "${env:CONFLUENCE_CLOUD_ID}"
-      }
-    }
-  }
-}
-```
-
-Or using the simplified `servers` format:
-
-```json
-{
-  "servers": {
     "confluence-reader": {
       "command": "npx",
       "args": ["@satiyap/confluence-reader-mcp"]
@@ -68,9 +47,7 @@ Or using the simplified `servers` format:
 }
 ```
 
-**Note:** Environment variables must be set in your shell before starting the MCP host.
-
-### 4. Restart Your MCP Host
+### 3. Restart Your MCP Host
 
 Restart your MCP-compatible application to load the server.
 
@@ -78,13 +55,14 @@ Restart your MCP-compatible application to load the server.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `CONFLUENCE_TOKEN` | ✅ Yes | [Scoped API token](https://support.atlassian.com/confluence/kb/scoped-api-tokens-in-confluence-cloud/) (Bearer auth only) |
+| `CONFLUENCE_TOKEN` | ✅ Yes | [Scoped API token](https://support.atlassian.com/confluence/kb/scoped-api-tokens-in-confluence-cloud/) |
+| `CONFLUENCE_EMAIL` | ✅ Yes | Email address associated with your Atlassian account |
 | `CONFLUENCE_CLOUD_ID` | Recommended | Atlassian Cloud ID for api.atlassian.com routing |
 | `CONFLUENCE_BASE_URL` | Optional | Fallback: `https://yourtenant.atlassian.net` |
 
 **Authentication:**
-- Only supports scoped API tokens with Bearer authentication
-- No email/password or Basic auth support
+- Uses scoped API tokens with Basic authentication (email:token)
+- Scoped tokens provide granular access control and better security than legacy API tokens
 
 **Routing:**
 - If `CONFLUENCE_CLOUD_ID` is set → Uses `https://api.atlassian.com/ex/confluence/{cloudId}`
@@ -184,7 +162,6 @@ confluence-reader-mcp/
 ├── dist/                           # Compiled output
 ├── package.json                    # Binary: confluence-reader-mcp
 ├── tsconfig.json
-├── .env.example
 ├── .gitignore
 └── README.md
 ```
@@ -199,10 +176,9 @@ npm start       # Run compiled server
 
 ## Security Notes
 
-- ✅ Never commit tokens to git (see `.gitignore`)
+- ✅ Credentials read from OS environment variables only — never in config files
+- ✅ Never commit tokens to git
 - ✅ Use scoped API tokens with minimal permissions
-- ✅ Tokens are read from OS environment only
-- ✅ No tokens in config files
 
 ## Publishing to npm (Optional)
 
@@ -218,10 +194,10 @@ Once ready for public use:
    npm publish --access public
    ```
 
-Then users can use the simplified config:
+Then users can use this minimal config (no env block needed):
 ```json
 {
-  "servers": {
+  "mcpServers": {
     "confluence-reader": {
       "command": "npx",
       "args": ["@satiyap/confluence-reader-mcp"]
@@ -230,7 +206,7 @@ Then users can use the simplified config:
 }
 ```
 
-**Note:** Environment variables (`CONFLUENCE_TOKEN`, `CONFLUENCE_CLOUD_ID`) must be set in the user's shell.
+**Note:** Users must set `CONFLUENCE_TOKEN`, `CONFLUENCE_EMAIL`, and `CONFLUENCE_CLOUD_ID` as OS environment variables.
 
 ## API References
 

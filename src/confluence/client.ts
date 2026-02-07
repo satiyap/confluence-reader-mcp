@@ -1,18 +1,25 @@
 import { ConfluencePageResponse } from "./types.js";
 
-type ConfluenceClientConfig = {
+export type ConfluenceClientConfig = {
   token: string;        // Scoped API token
+  email?: string;       // User email (required for scoped tokens)
   cloudId?: string;     // Atlassian Cloud ID
   baseUrl?: string;     // Direct tenant URL (e.g., https://yourtenant.atlassian.net)
 };
 
 /**
  * Build authorization headers for Confluence API requests
- * Only supports scoped API tokens with Bearer authentication
+ * Scoped API tokens use Basic Auth with email:token
  * 
  * @see https://support.atlassian.com/confluence/kb/scoped-api-tokens-in-confluence-cloud/
  */
-function buildAuthHeaders(cfg: ConfluenceClientConfig): HeadersInit {
+export function buildAuthHeaders(cfg: ConfluenceClientConfig): HeadersInit {
+  if (cfg.email) {
+    // Scoped tokens use Basic Auth with email:token
+    const credentials = Buffer.from(`${cfg.email}:${cfg.token}`).toString('base64');
+    return { Authorization: `Basic ${credentials}` };
+  }
+  // Fallback to Bearer for other token types
   return { Authorization: `Bearer ${cfg.token}` };
 }
 
@@ -20,7 +27,7 @@ function buildAuthHeaders(cfg: ConfluenceClientConfig): HeadersInit {
  * Build base URL for Confluence API requests
  * Prefers cloudId routing over direct baseUrl
  */
-function buildBase(cfg: ConfluenceClientConfig): string {
+export function buildBase(cfg: ConfluenceClientConfig): string {
   // Prefer cloudId routing (works well with scoped token access patterns)
   if (cfg.cloudId) return `https://api.atlassian.com/ex/confluence/${cfg.cloudId}`;
   if (cfg.baseUrl) return cfg.baseUrl;

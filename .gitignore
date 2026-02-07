@@ -1,7 +1,6 @@
 .kiro/
 node_modules/
 dist/
-.env
 .DS_Store
 *.log
 npm-debug.log*
@@ -9,3 +8,5 @@ yarn-debug.log*
 yarn-error.log*
 .vscode/
 .idea/
+.env
+.env.*
