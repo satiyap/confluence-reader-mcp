@@ -106,3 +106,88 @@ export async function fetchChildPages(cfg: ConfluenceClientConfig, pageId: strin
   return all;
 }
 
+/**
+ * Represents a page node in a recursive page tree.
+ */
+export type PageNode = {
+  id: string;
+  title: string;
+  content: string;
+  children: PageNode[];
+};
+
+/**
+ * Recursively fetch a page and its descendants up to the given depth.
+ *
+ * For each page it:
+ *  1. Fetches the full page content via fetchPageById
+ *  2. Discovers child page IDs via fetchChildPages
+ *  3. Recurses into each child (in parallel) until depth is exhausted
+ *
+ * Children at each level are fetched concurrently with a concurrency
+ * limit to avoid hammering the API. Pages that fail to load are
+ * included as stubs with an error message instead of aborting the
+ * entire tree.
+ *
+ * @param cfg - Client configuration
+ * @param pageId - Root page ID to start from
+ * @param depth - How many levels of children to fetch (0 = root only)
+ * @param concurrency - Max parallel requests per level (default 5)
+ * @returns A tree of PageNode objects
+ */
+export async function fetchPageTree(
+  cfg: ConfluenceClientConfig,
+  pageId: string,
+  depth: number,
+  concurrency: number = 5
+): Promise<PageNode> {
+  const { storageToText } = await import("./transform.js");
+
+  const page = await fetchPageById(cfg, pageId);
+  const storage = page.body?.storage?.value ?? "";
+  const content = storage ? storageToText(storage) : "";
+
+  const children: PageNode[] = [];
+  if (depth > 0) {
+    const childPages = await fetchChildPages(cfg, pageId);
+
+    // Fetch children in parallel, bounded by concurrency limit
+    const results = await parallelMap(
+      childPages,
+      (child) => fetchPageTree(cfg, child.id, depth - 1, concurrency).catch((err): PageNode => ({
+        id: child.id,
+        title: child.title ?? `Page ${child.id}`,
+        content: `[Error fetching page: ${(err as Error).message}]`,
+        children: [],
+      })),
+      concurrency
+    );
+    children.push(...results);
+  }
+
+  return { id: page.id, title: page.title, content, children };
+}
+
+/**
+ * Run an async mapper over items with a concurrency limit.
+ */
+async function parallelMap<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  limit: number
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let idx = 0;
+
+  async function worker() {
+    while (idx < items.length) {
+      const i = idx++;
+      results[i] = await fn(items[i]);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
