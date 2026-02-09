@@ -1,4 +1,4 @@
-import { ConfluencePageResponse } from "./types.js";
+import { ConfluencePageResponse, ConfluenceChildrenResponse } from "./types.js";
 
 export type ConfluenceClientConfig = {
   token: string;        // Scoped API token
@@ -64,3 +64,45 @@ export async function fetchPageById(cfg: ConfluenceClientConfig, pageId: string)
   
   return (await res.json()) as ConfluencePageResponse;
 }
+
+/**
+ * Fetch direct child pages of a Confluence page using the v2 REST API.
+ * Returns all children (paginates automatically).
+ */
+export async function fetchChildPages(cfg: ConfluenceClientConfig, pageId: string): Promise<ConfluencePageResponse[]> {
+  const base = buildBase(cfg);
+  const all: ConfluencePageResponse[] = [];
+  let cursor: string | undefined;
+
+  while (true) {
+    const url = new URL(`${base}/wiki/api/v2/pages/${pageId}/children`);
+    url.searchParams.set("limit", "50");
+    if (cursor) url.searchParams.set("cursor", cursor);
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        ...buildAuthHeaders(cfg),
+        Accept: "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Confluence API error ${res.status}: ${text.slice(0, 500)}`);
+    }
+
+    const data = (await res.json()) as ConfluenceChildrenResponse;
+    all.push(...data.results);
+
+    if (!data._links?.next) break;
+
+    // The next link contains the cursor parameter
+    const nextUrl = new URL(data._links.next, base);
+    cursor = nextUrl.searchParams.get("cursor") ?? undefined;
+    if (!cursor) break;
+  }
+
+  return all;
+}
+

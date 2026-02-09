@@ -5,13 +5,13 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { extractConfluencePageId } from "./confluence/url.js";
-import { fetchPageById, buildAuthHeaders, buildBase, type ConfluenceClientConfig } from "./confluence/client.js";
+import { fetchPageById, fetchChildPages, buildAuthHeaders, buildBase, type ConfluenceClientConfig } from "./confluence/client.js";
 import { storageToText } from "./confluence/transform.js";
 import { generateUnifiedDiff, generateDiffStats } from "./compare/diff.js";
 
 const server = new McpServer({
   name: "confluence-reader-mcp",
-  version: "0.1.0"
+  version: "0.1.2"
 });
 
 function getEnv(name: string): string | undefined {
@@ -62,15 +62,22 @@ server.tool(
     const email = getEnv("CONFLUENCE_EMAIL")!;
     const cloudId = getEnv("CONFLUENCE_CLOUD_ID");
     const baseUrl = getEnv("CONFLUENCE_BASE_URL");
+    const cfg = { token, email, cloudId, baseUrl };
     
     const pageId = extractConfluencePageId(url);
-    const page = await fetchPageById({ token, email, cloudId, baseUrl }, pageId);
+    const page = await fetchPageById(cfg, pageId);
+    const children = await fetchChildPages(cfg, pageId);
     
     const storage = page.body?.storage?.value ?? "";
     const markdown = storage ? storageToText(storage) : "";
     
+    const childLinks = children.map(c => `- [${c.title}] (id: ${c.id})`).join("\n");
+    const body = childLinks
+      ? `${markdown}\n\n## Child Pages\n${childLinks}`
+      : markdown;
+    
     return {
-      content: [{ type: "text", text: markdown }]
+      content: [{ type: "text", text: body }]
     };
   }
 );
@@ -83,8 +90,46 @@ server.tool(
     depth: z.number().optional().default(1).describe("How many levels deep to fetch child pages (default: 1)")
   },
   async ({ url, depth }) => {
-    // TODO: Implement recursive child page fetching
-    throw new Error("Not yet implemented - coming soon!");
+    const token = getEnv("CONFLUENCE_TOKEN")!;
+    const email = getEnv("CONFLUENCE_EMAIL")!;
+    const cloudId = getEnv("CONFLUENCE_CLOUD_ID");
+    const baseUrl = getEnv("CONFLUENCE_BASE_URL");
+    const cfg = { token, email, cloudId, baseUrl };
+
+    const pageId = extractConfluencePageId(url);
+
+    type PageNode = { id: string; title: string; content: string; children: PageNode[] };
+
+    async function buildTree(id: string, remaining: number): Promise<PageNode> {
+      const page = await fetchPageById(cfg, id);
+      const storage = page.body?.storage?.value ?? "";
+      const content = storage ? storageToText(storage) : "";
+
+      const children: PageNode[] = [];
+      if (remaining > 0) {
+        const childPages = await fetchChildPages(cfg, id);
+        for (const child of childPages) {
+          children.push(await buildTree(child.id, remaining - 1));
+        }
+      }
+
+      return { id: page.id, title: page.title, content, children };
+    }
+
+    const tree = await buildTree(pageId, depth);
+
+    function renderTree(node: PageNode, level: number): string {
+      const heading = "#".repeat(Math.min(level + 1, 6));
+      const parts = [`${heading} ${node.title}`, node.content];
+      for (const child of node.children) {
+        parts.push(renderTree(child, level + 1));
+      }
+      return parts.join("\n\n");
+    }
+
+    return {
+      content: [{ type: "text", text: renderTree(tree, 0) }]
+    };
   }
 );
 
