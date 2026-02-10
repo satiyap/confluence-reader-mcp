@@ -16,3 +16,18 @@ export type ConfluenceChildrenResponse = {
   results: ConfluencePageResponse[];
   _links?: { next?: string };
 };
+
+export type ConfluenceAttachment = {
+  id: string;
+  title: string;
+  mediaType?: string;
+  fileSize?: number;
+  downloadLink?: string;
+  _links?: { download?: string };
+};
+
+export type ConfluenceAttachmentsResponse = {
+  results: ConfluenceAttachment[];
+  _links?: { next?: string; base?: string };
+};
+

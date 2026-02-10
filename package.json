@@ -1,6 +1,6 @@
 {
   "name": "@satiyap/confluence-reader-mcp",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "MCP server for fetching and comparing Confluence documentation with local files",
   "author": "satiyap",
   "license": "MIT",
@@ -32,10 +32,13 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "turndown": "^7.2.2",
+    "turndown-plugin-gfm": "^1.0.2",
     "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/turndown": "^5.0.6",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   },

@@ -3,14 +3,14 @@
 [![npm version](https://img.shields.io/npm/v/@satiyap/confluence-reader-mcp.svg)](https://www.npmjs.com/package/@satiyap/confluence-reader-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-An MCP server that lets AI assistants read Confluence Cloud pages, walk page trees recursively, and diff Confluence content against local documentation.
+An MCP server that lets AI assistants read Confluence Cloud pages as markdown, browse page trees, download image attachments, and diff content against local documentation.
 
 ## Features
 
-- Fetch a single Confluence page as plain text
-- Recursively fetch entire page trees up to a configurable depth
+- Fetch a single Confluence page as proper GitHub-flavored markdown (headings, tables, lists, code blocks)
+- List child pages for recursive traversal
+- Download image attachments by filename
 - Compare local content against a Confluence page with a unified diff
-- Parallel child-page fetching with error resilience
 - Supports scoped API tokens with Basic Auth
 
 ## Setup
@@ -58,21 +58,28 @@ Restart the MCP host to pick up the new server.
 
 ### `confluence.fetch_page`
 
-Fetches a Confluence page by URL and returns its content as text. Optionally recurses into child pages.
+Fetches a single Confluence page by URL and returns its content as markdown. Lists any direct child pages at the bottom so the caller can decide which to fetch next.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `url` | string | — | Confluence page URL |
-| `depth` | number | 0 | Levels of child pages to fetch recursively |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `url` | string | Confluence page URL |
 
-### `confluence.fetch_page_tree`
+### `confluence.list_children`
 
-Fetches a page and all its descendants recursively, up to a given depth. Returns a single document with nested headings.
+Lists the direct child pages of a Confluence page without fetching their content. Useful for discovering page structure before fetching individual pages.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `url` | string | — | Confluence page URL |
-| `depth` | number | 1 | How many levels of children to fetch |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `url` | string | Confluence page URL |
+
+### `confluence.fetch_image`
+
+Downloads an image attachment from a Confluence page by filename. Returns the image as base64-encoded data.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `url` | string | Confluence page URL |
+| `filename` | string | Attachment filename (e.g. `architecture.png`) |
 
 ### `confluence.compare`
 

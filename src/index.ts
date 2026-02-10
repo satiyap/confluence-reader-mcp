@@ -5,13 +5,13 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { extractConfluencePageId } from "./confluence/url.js";
-import { fetchPageById, fetchChildPages, fetchPageTree, buildAuthHeaders, buildBase, type ConfluenceClientConfig, type PageNode } from "./confluence/client.js";
-import { storageToText } from "./confluence/transform.js";
+import { fetchPageById, fetchChildPages, fetchAttachments, downloadAttachment, buildAuthHeaders, buildBase, type ConfluenceClientConfig } from "./confluence/client.js";
+import { storageToMarkdown } from "./confluence/transform.js";
 import { generateUnifiedDiff, generateDiffStats } from "./compare/diff.js";
 
 const server = new McpServer({
   name: "confluence-reader-mcp",
-  version: "0.1.2"
+  version: "0.2.0"
 });
 
 function getEnv(name: string): string | undefined {
@@ -51,66 +51,120 @@ function validateEnvironment(): void {
   }
 }
 
+/** Build config from env vars */
+function getCfg(): ConfluenceClientConfig {
+  return {
+    token: getEnv("CONFLUENCE_TOKEN")!,
+    email: getEnv("CONFLUENCE_EMAIL")!,
+    cloudId: getEnv("CONFLUENCE_CLOUD_ID"),
+    baseUrl: getEnv("CONFLUENCE_BASE_URL"),
+  };
+}
+
 server.tool(
   "confluence.fetch_page",
-  "Fetch a Confluence page and return it as markdown. Optionally recurse into child pages.",
+  "Fetch a Confluence page as markdown. Returns the page content and lists any direct child pages so the caller can decide which children to fetch next.",
   {
     url: z.string().describe("Confluence page URL"),
-    depth: z.number().optional().default(0).describe("Levels of child pages to fetch recursively (default: 0, root page only)")
   },
-  async ({ url, depth }) => {
-    const token = getEnv("CONFLUENCE_TOKEN")!;
-    const email = getEnv("CONFLUENCE_EMAIL")!;
-    const cloudId = getEnv("CONFLUENCE_CLOUD_ID");
-    const baseUrl = getEnv("CONFLUENCE_BASE_URL");
-    const cfg = { token, email, cloudId, baseUrl };
-
+  async ({ url }) => {
+    const cfg = getCfg();
     const pageId = extractConfluencePageId(url);
-    const tree = await fetchPageTree(cfg, pageId, depth);
+    const page = await fetchPageById(cfg, pageId);
+    const children = await fetchChildPages(cfg, pageId);
 
-    function renderNode(node: PageNode, level: number): string {
-      const heading = "#".repeat(Math.min(level + 1, 6));
-      const parts = [`${heading} ${node.title}`, node.content];
-      for (const child of node.children) {
-        parts.push(renderNode(child, level + 1));
-      }
-      return parts.join("\n\n");
-    }
+    const storage = page.body?.storage?.value ?? "";
+    const markdown = storage ? storageToMarkdown(storage) : "";
+
+    const childList = children.length > 0
+      ? `\n\n---\n## Child Pages\n${children.map(c => `- ${c.title} (id: ${c.id})`).join("\n")}`
+      : "";
 
     return {
-      content: [{ type: "text", text: renderNode(tree, 0) }]
+      content: [{
+        type: "text",
+        text: `# ${page.title}\n\n${markdown}${childList}`
+      }]
     };
   }
 );
 
 server.tool(
-  "confluence.fetch_page_tree",
-  "Fetch a Confluence page and all its child pages recursively up to a specified depth.",
+  "confluence.list_children",
+  "List the direct child pages of a Confluence page without fetching their content. Useful for discovering page structure before fetching individual pages.",
+  {
+    url: z.string().describe("Confluence page URL")
+  },
+  async ({ url }) => {
+    const cfg = getCfg();
+    const pageId = extractConfluencePageId(url);
+    const children = await fetchChildPages(cfg, pageId);
+
+    const lines = children.map(c => `- ${c.title} (id: ${c.id})`);
+    const text = lines.length > 0
+      ? `Found ${lines.length} child page(s):\n\n${lines.join("\n")}`
+      : "No child pages found.";
+
+    return { content: [{ type: "text" as const, text }] };
+  }
+);
+
+server.tool(
+  "confluence.fetch_image",
+  "Download an image attachment from a Confluence page by filename. Returns the image as base64-encoded data.",
   {
     url: z.string().describe("Confluence page URL"),
-    depth: z.number().optional().default(1).describe("How many levels deep to fetch child pages (default: 1)")
+    filename: z.string().describe("Attachment filename (e.g. 'architecture.png')")
   },
-  async ({ url, depth }) => {
-    const token = getEnv("CONFLUENCE_TOKEN")!;
-    const email = getEnv("CONFLUENCE_EMAIL")!;
-    const cloudId = getEnv("CONFLUENCE_CLOUD_ID");
-    const baseUrl = getEnv("CONFLUENCE_BASE_URL");
-    const cfg = { token, email, cloudId, baseUrl };
-
+  async ({ url, filename }) => {
+    const cfg = getCfg();
     const pageId = extractConfluencePageId(url);
-    const tree = await fetchPageTree(cfg, pageId, depth);
+    const attachments = await fetchAttachments(cfg, pageId);
 
-    function renderTree(node: PageNode, level: number): string {
-      const heading = "#".repeat(Math.min(level + 1, 6));
-      const parts = [`${heading} ${node.title}`, node.content];
-      for (const child of node.children) {
-        parts.push(renderTree(child, level + 1));
-      }
-      return parts.join("\n\n");
+    const match = attachments.find(a =>
+      a.title.toLowerCase() === filename.toLowerCase()
+    );
+
+    if (!match) {
+      const available = attachments.map(a => a.title).join(", ");
+      return {
+        content: [{
+          type: "text" as const,
+          text: `Attachment "${filename}" not found. Available: ${available || "none"}`
+        }]
+      };
     }
 
+    const downloadLink = match.downloadLink ?? match._links?.download;
+    if (!downloadLink) {
+      return {
+        content: [{
+          type: "text" as const,
+          text: `No download link available for "${filename}".`
+        }]
+      };
+    }
+
+    const { buffer, contentType } = await downloadAttachment(cfg, downloadLink);
+    const base64 = buffer.toString("base64");
+
+    // Return as base64 image content
+    if (contentType.startsWith("image/")) {
+      return {
+        content: [{
+          type: "image" as const,
+          data: base64,
+          mimeType: contentType,
+        }]
+      };
+    }
+
+    // Non-image attachment — return as base64 text
     return {
-      content: [{ type: "text", text: renderTree(tree, 0) }]
+      content: [{
+        type: "text" as const,
+        text: `Downloaded "${filename}" (${contentType}, ${buffer.length} bytes).\nBase64: ${base64.slice(0, 200)}...`
+      }]
     };
   }
 );
@@ -123,16 +177,13 @@ server.tool(
     localContent: z.string().describe("Local markdown content to compare against")
   },
   async ({ url, localContent }) => {
-    const token = getEnv("CONFLUENCE_TOKEN")!;
-    const email = getEnv("CONFLUENCE_EMAIL")!;
-    const cloudId = getEnv("CONFLUENCE_CLOUD_ID");
-    const baseUrl = getEnv("CONFLUENCE_BASE_URL");
+    const cfg = getCfg();
     
     const pageId = extractConfluencePageId(url);
-    const page = await fetchPageById({ token, email, cloudId, baseUrl }, pageId);
+    const page = await fetchPageById(cfg, pageId);
     
     const storage = page.body?.storage?.value ?? "";
-    const confluenceMarkdown = storage ? storageToText(storage) : "";
+    const confluenceMarkdown = storage ? storageToMarkdown(storage) : "";
     
     const diff = generateUnifiedDiff(
       confluenceMarkdown.trim(),
