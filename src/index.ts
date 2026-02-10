@@ -11,7 +11,7 @@ import { generateUnifiedDiff, generateDiffStats } from "./compare/diff.js";
 
 const server = new McpServer({
   name: "confluence-reader-mcp",
-  version: "0.2.2"
+  version: "0.2.3"
 });
 
 function getEnv(name: string): string | undefined {
