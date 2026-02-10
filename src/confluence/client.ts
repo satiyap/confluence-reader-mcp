@@ -146,15 +146,16 @@ export async function fetchAttachments(cfg: ConfluenceClientConfig, pageId: stri
 }
 
 /**
- * Download an attachment binary by its download link.
- * Returns the raw Buffer and content type.
+ * Download an attachment binary from a Confluence page.
+ * Uses the v1 REST API download endpoint which works with scoped tokens.
  */
 export async function downloadAttachment(
   cfg: ConfluenceClientConfig,
-  downloadLink: string
+  pageId: string,
+  attachmentId: string
 ): Promise<{ buffer: Buffer; contentType: string }> {
   const base = buildBase(cfg);
-  const url = `${base}/wiki${downloadLink}`;
+  const url = `${base}/wiki/rest/api/content/${pageId}/child/attachment/${attachmentId}/download`;
 
   const res = await fetch(url, {
     method: "GET",

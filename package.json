@@ -1,6 +1,6 @@
 {
   "name": "@satiyap/confluence-reader-mcp",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "MCP server for fetching and comparing Confluence documentation with local files",
   "author": "satiyap",
   "license": "MIT",

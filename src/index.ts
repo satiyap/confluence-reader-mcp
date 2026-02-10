@@ -11,7 +11,7 @@ import { generateUnifiedDiff, generateDiffStats } from "./compare/diff.js";
 
 const server = new McpServer({
   name: "confluence-reader-mcp",
-  version: "0.2.0"
+  version: "0.2.2"
 });
 
 function getEnv(name: string): string | undefined {
@@ -45,7 +45,7 @@ function validateEnvironment(): void {
     errors.forEach(err => console.error(`  • ${err}`));
     console.error("\nSet the required environment variables in your shell profile (~/.zshrc, ~/.bashrc, etc.):\n");
     console.error("  export CONFLUENCE_TOKEN=\"your_scoped_token\"");
-    console.error("  export CONFLUENCE_EMAIL=\"you@company.com\"");
+    console.error("  export CONFLUENCE_EMAIL=\"your_email@example.com\"");
     console.error("  export CONFLUENCE_CLOUD_ID=\"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\"\n");
     process.exit(1);
   }
@@ -111,12 +111,13 @@ server.tool(
 
 server.tool(
   "confluence.fetch_image",
-  "Download an image attachment from a Confluence page by filename. Returns the image as base64-encoded data.",
+  "Download an image attachment from a Confluence page by filename and save it to a local directory. Returns the saved file path.",
   {
     url: z.string().describe("Confluence page URL"),
-    filename: z.string().describe("Attachment filename (e.g. 'architecture.png')")
+    filename: z.string().describe("Attachment filename (e.g. 'architecture.png')"),
+    destination: z.string().describe("Local directory path to save the image to")
   },
-  async ({ url, filename }) => {
+  async ({ url, filename, destination }) => {
     const cfg = getCfg();
     const pageId = extractConfluencePageId(url);
     const attachments = await fetchAttachments(cfg, pageId);
@@ -135,35 +136,20 @@ server.tool(
       };
     }
 
-    const downloadLink = match.downloadLink ?? match._links?.download;
-    if (!downloadLink) {
-      return {
-        content: [{
-          type: "text" as const,
-          text: `No download link available for "${filename}".`
-        }]
-      };
-    }
+    const { buffer } = await downloadAttachment(cfg, pageId, match.id);
 
-    const { buffer, contentType } = await downloadAttachment(cfg, downloadLink);
-    const base64 = buffer.toString("base64");
+    // Ensure destination directory exists
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    await fs.mkdir(destination, { recursive: true });
 
-    // Return as base64 image content
-    if (contentType.startsWith("image/")) {
-      return {
-        content: [{
-          type: "image" as const,
-          data: base64,
-          mimeType: contentType,
-        }]
-      };
-    }
+    const filePath = path.join(destination, match.title);
+    await fs.writeFile(filePath, buffer);
 
-    // Non-image attachment — return as base64 text
     return {
       content: [{
         type: "text" as const,
-        text: `Downloaded "${filename}" (${contentType}, ${buffer.length} bytes).\nBase64: ${base64.slice(0, 200)}...`
+        text: `Saved "${match.title}" (${buffer.length} bytes) to ${filePath}`
       }]
     };
   }

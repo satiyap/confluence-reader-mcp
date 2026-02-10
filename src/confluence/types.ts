@@ -22,8 +22,6 @@ export type ConfluenceAttachment = {
   title: string;
   mediaType?: string;
   fileSize?: number;
-  downloadLink?: string;
-  _links?: { download?: string };
 };
 
 export type ConfluenceAttachmentsResponse = {

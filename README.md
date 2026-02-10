@@ -36,8 +36,10 @@ Reload your shell or open a new terminal.
 |----------|----------|-------------|
 | `CONFLUENCE_TOKEN` | Yes | Scoped API token |
 | `CONFLUENCE_EMAIL` | Yes | Email tied to your Atlassian account |
-| `CONFLUENCE_CLOUD_ID` | One of these | Cloud ID — routes via `api.atlassian.com` |
-| `CONFLUENCE_BASE_URL` | is required | Direct tenant URL, e.g. `https://your-org.atlassian.net` |
+| `CONFLUENCE_CLOUD_ID` | Yes* | Cloud ID — routes via `api.atlassian.com` |
+| `CONFLUENCE_BASE_URL` | Yes* | Direct tenant URL, e.g. `https://your-org.atlassian.net` |
+
+*One of `CONFLUENCE_CLOUD_ID` or `CONFLUENCE_BASE_URL` is required. `CONFLUENCE_CLOUD_ID` is recommended.
 
 ### 3. Add to MCP Config
 
@@ -74,12 +76,13 @@ Lists the direct child pages of a Confluence page without fetching their content
 
 ### `confluence.fetch_image`
 
-Downloads an image attachment from a Confluence page by filename. Returns the image as base64-encoded data.
+Downloads an image attachment from a Confluence page by filename and saves it to a local directory.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `url` | string | Confluence page URL |
 | `filename` | string | Attachment filename (e.g. `architecture.png`) |
+| `destination` | string | Local directory path to save the image to |
 
 ### `confluence.compare`
 
